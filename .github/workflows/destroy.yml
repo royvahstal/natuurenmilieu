@@ -1,0 +1,38 @@
+name: Destroy Deployment
+
+on:
+  workflow_dispatch:  # Manually trigger from GitHub Actions, but only if the code is in the default (main/master) branch
+  push:
+    branches: [ "devel" ] 
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.PRIVATE_KEY }}
+
+      - name: Connect to deploy host and destroy stack
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USERNAME }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
+            echo "Stopping and removing all containers..."
+            docker compose -f /opt/geostack/docker-compose.yml down -v
+
+            echo "Removing leftover volumes..."
+            docker volume prune -f
+
+            echo "Cleaning SSL, DB backups, and other persistent directories..."
+            sudo rm -rf /opt/ssl/www/*
+            sudo rm -rf /opt/ssl/letsencrypt/*
+            sudo rm -rf /opt/db_backups/*
+            sudo rm -rf /op/* 
+
+            echo "All services destroyed and volumes cleaned."
+          EOF

@@ -1,0 +1,52 @@
+name: Deploy GeoStack
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [ "devel" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Create dynamic inventory
+        run: |
+          mkdir -p ansible/inventory
+          cat > ansible/inventory/hosts <<EOF
+          [geostack]
+          ${DEPLOY_HOST} ansible_user=${{ secrets.SSH_USERNAME }} ansible_ssh_private_key_file=~/.ssh/id_ed25519
+          EOF
+          cat ansible/inventory/hosts
+      
+      - name: Create SSL Mapping directory
+        run: |
+            sudo mkdir -p /opt/ssl/letsencrypt        # certs and renewal configs
+            sudo mkdir -p /opt/ssl/lib                # certbot state
+            sudo mkdir -p /opt/ssl/www/.well-known/acme-challenge
+            sudo chown -R $(whoami):$(whoami) /opt/ssl
+
+      - name: GeoStack Playbook Executions
+        run: ansible-playbook -i ansible/inventory/hosts ansible/site.yml
